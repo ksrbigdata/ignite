@@ -1986,7 +1986,7 @@ public abstract class IgniteTxLocalAdapter extends IgniteTxAdapter
                     needReadVer,
                     singleRmv,
                     hasFilters,
-                    (entryProcessor != null || cacheCtx.config().isLoadPreviousValue()) && !skipStore,
+                    /*read through*/(entryProcessor != null || cacheCtx.config().isLoadPreviousValue()) && !skipStore,
                     retval,
                     keepBinary);
             }
