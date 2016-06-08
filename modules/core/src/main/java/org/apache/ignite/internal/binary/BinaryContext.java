@@ -965,6 +965,7 @@ public class BinaryContext {
     /**
      * @param cls Class.
      * @param id Type ID.
+     * @param affFieldName Affinity field name.
      * @return GridBinaryClassDescriptor.
      */
     public BinaryClassDescriptor registerPredefinedType(Class<?> cls, int id, String affFieldName) {
@@ -993,6 +994,15 @@ public class BinaryContext {
 
         if (affFieldName != null)
             affKeyFieldNames.putIfAbsent(id, affFieldName);
+
+        if (affFieldName != null) {
+            metaHnd.addMeta(id, new BinaryMetadata(id,
+                simpleClsName,
+                desc.fieldsMeta(),
+                affFieldName,
+                desc.schema() != null ? Collections.singleton(desc.schema()) : null,
+                false).wrap(this));
+        }
 
         return desc;
     }
