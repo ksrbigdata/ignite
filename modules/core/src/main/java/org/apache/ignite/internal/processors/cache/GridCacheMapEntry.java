@@ -1002,15 +1002,6 @@ public abstract class GridCacheMapEntry extends GridMetadataAwareAdapter impleme
 
                     if (cctx.deferredDelete() && deletedUnlocked() && !isInternal() && !detached())
                         deletedUnlocked(false);
-
-                    if (tx != null) {
-                        IgniteTxEntry e = tx.entry(cctx.txKey(key));
-
-                        assert e != null : this;
-
-                        if (e != null)
-                            e.valueReadFromStore(true);
-                    }
                 }
 
                 if (evt && cctx.events().isRecordable(EVT_CACHE_OBJECT_READ))

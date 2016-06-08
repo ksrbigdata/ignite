@@ -58,7 +58,7 @@ import org.jetbrains.annotations.Nullable;
 import static org.apache.ignite.internal.processors.cache.GridCacheOperation.READ;
 import static org.apache.ignite.internal.processors.cache.GridCacheOperation.TRANSFORM;
 import static org.apache.ignite.internal.processors.cache.GridCacheUtils.KEEP_BINARY_FLAG_MASK;
-import static org.apache.ignite.internal.processors.cache.GridCacheUtils.READ_FROM_STORE_FLAG_MASK;
+import static org.apache.ignite.internal.processors.cache.GridCacheUtils.OLD_VAL_ON_PRIMARY;
 import static org.apache.ignite.internal.processors.cache.GridCacheUtils.SKIP_STORE_FLAG_MASK;
 
 /**
@@ -487,17 +487,17 @@ public class IgniteTxEntry implements GridPeerDeployAware, Message {
     }
 
     /**
-     * @param readFromStore Flag indicating whether entry value was read from store.
+     * @param oldValOnPrimary {@code True} If old value for 'invoke' operation was non null on primary node.
      */
-    public void valueReadFromStore(boolean readFromStore) {
-        setFlag(readFromStore, READ_FROM_STORE_FLAG_MASK);
+    public void oldValueOnPrimary(boolean oldValOnPrimary) {
+        setFlag(oldValOnPrimary, OLD_VAL_ON_PRIMARY);
     }
 
     /**
-     * @return Flag indicating whether entry value was read from store.
+     * @return {@code True} If old value for 'invoke' operation was non null on primary node.
      */
-    public boolean valueReadFromStore() {
-        return isFlag(READ_FROM_STORE_FLAG_MASK);
+    public boolean oldValueOnPrimary() {
+        return isFlag(OLD_VAL_ON_PRIMARY);
     }
 
     /**

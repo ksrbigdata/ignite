@@ -1061,15 +1061,6 @@ public final class GridDhtLockFuture extends GridCompoundIdentityFuture<Boolean>
                                     topVer,
                                     GridDrType.DR_LOAD,
                                     true);
-
-                                if (inTx()) {
-                                    IgniteTxEntry txEntry = tx.entry(cctx.txKey(key));
-
-                                    assert txEntry != null : key;
-
-                                    if (txEntry != null)
-                                        txEntry.valueReadFromStore(true);
-                                }
                             }
                             catch (GridCacheEntryRemovedException e) {
                                 assert false : "Should not get removed exception while holding lock on entry " +

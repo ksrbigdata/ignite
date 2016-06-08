@@ -28,6 +28,7 @@ import javax.cache.processor.MutableEntry;
 import org.apache.ignite.Ignite;
 import org.apache.ignite.IgniteCache;
 import org.apache.ignite.cache.CacheAtomicityMode;
+import org.apache.ignite.cache.CacheMemoryMode;
 import org.apache.ignite.cache.CacheMode;
 import org.apache.ignite.cache.affinity.rendezvous.RendezvousAffinityFunction;
 import org.apache.ignite.cache.store.CacheStore;
@@ -161,9 +162,6 @@ public abstract class IgniteCacheInvokeReadThroughAbstractTest extends GridCommo
                 if (ccfg.getAtomicityMode() == TRANSACTIONAL) {
                     for (TransactionConcurrency concurrency : TransactionConcurrency.values()) {
                         for (TransactionIsolation isolation : TransactionIsolation.values()) {
-                            if (concurrency == TransactionConcurrency.OPTIMISTIC)
-                                continue;
-
                             log.info("Test tx [concurrency=" + concurrency + ", isolation=" + isolation + ']');
 
                             for (int i = 0; i < 50; i++)
@@ -187,9 +185,6 @@ public abstract class IgniteCacheInvokeReadThroughAbstractTest extends GridCommo
 
                     for (TransactionConcurrency concurrency : TransactionConcurrency.values()) {
                         for (TransactionIsolation isolation : TransactionIsolation.values()) {
-                            if (concurrency == TransactionConcurrency.OPTIMISTIC || isolation == TransactionIsolation.READ_COMMITTED)
-                                continue;
-
                             log.info("Test tx2 [concurrency=" + concurrency + ", isolation=" + isolation + ']');
 
                             for (int i = 0; i < 50; i++)
@@ -327,6 +322,7 @@ public abstract class IgniteCacheInvokeReadThroughAbstractTest extends GridCommo
     /**
      * @param cacheMode Cache mode.
      * @param atomicityMode Atomicity mode.
+     * @param memoryMode Memory mode.
      * @param backups Number of backups.
      * @param nearCache Near cache flag.
      * @return Cache configuration.
@@ -334,6 +330,7 @@ public abstract class IgniteCacheInvokeReadThroughAbstractTest extends GridCommo
     @SuppressWarnings("unchecked")
     protected CacheConfiguration cacheConfiguration(CacheMode cacheMode,
         CacheAtomicityMode atomicityMode,
+        CacheMemoryMode memoryMode,
         int backups,
         boolean nearCache) {
         CacheConfiguration ccfg = new CacheConfiguration();
@@ -346,6 +343,7 @@ public abstract class IgniteCacheInvokeReadThroughAbstractTest extends GridCommo
         ccfg.setCacheMode(cacheMode);
         ccfg.setAffinity(new RendezvousAffinityFunction(false, 32));
         ccfg.setAtomicWriteOrderMode(PRIMARY);
+        ccfg.setMemoryMode(memoryMode);
 
         if (nearCache)
             ccfg.setNearConfiguration(new NearCacheConfiguration());

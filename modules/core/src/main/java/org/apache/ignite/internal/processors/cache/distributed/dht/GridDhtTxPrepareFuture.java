@@ -373,6 +373,8 @@ public final class GridDhtTxPrepareFuture extends GridCompoundFuture<IgniteInter
 
                             boolean modified = false;
 
+                            txEntry.oldValueOnPrimary(val != null);
+
                             for (T2<EntryProcessor<Object, Object, Object>, Object[]> t : txEntry.entryProcessors()) {
                                  CacheInvokeEntry<Object, Object> invokeEntry = new CacheInvokeEntry<>(key, val,
                                      txEntry.cached().version(), keepBinary, txEntry.cached());
@@ -1324,16 +1326,10 @@ public final class GridDhtTxPrepareFuture extends GridCompoundFuture<IgniteInter
                 GridDistributedTxMapping global = globalMap.get(n.id());
 
                 if (!F.isEmpty(entry.entryProcessors())) {
-                    boolean sndVal = entry.valueReadFromStore();
+                    GridDhtPartitionState state = entry.context().topology().partitionState(n.id(),
+                        entry.cached().partition());
 
-                    if (!sndVal) {
-                        GridDhtPartitionState state = entry.context().topology().partitionState(n.id(),
-                            entry.cached().partition());
-
-                        sndVal = state != GridDhtPartitionState.OWNING && state != GridDhtPartitionState.EVICTED;
-                    }
-
-                    if (sndVal) {
+                    if (state != GridDhtPartitionState.OWNING && state != GridDhtPartitionState.EVICTED) {
                         T2<GridCacheOperation, CacheObject> procVal = entry.entryProcessorCalculatedValue();
 
                         assert procVal != null : entry;
