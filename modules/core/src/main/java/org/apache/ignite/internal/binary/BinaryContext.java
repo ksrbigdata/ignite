@@ -259,7 +259,7 @@ public class BinaryContext {
         registerPredefinedType(LinkedHashMap.class, 0);
 
         // Classes with overriden default serialization flag.
-        registerPredefinedType(AffinityKey.class, 0, affinityFieldName(AffinityKey.class));
+        registerPredefinedType(AffinityKey.class, 0, affinityFieldName(AffinityKey.class), false);
 
         registerPredefinedType(GridMapEntry.class, 60);
         registerPredefinedType(IgniteBiTuple.class, 61);
@@ -562,9 +562,37 @@ public class BinaryContext {
         if (desc == null)
             desc = registerClassDescriptor(cls, deserialize);
         else if (!desc.registered()) {
-            assert desc.userType();
+            if (!desc.userType()) {
+                BinaryClassDescriptor desc0 = new BinaryClassDescriptor(
+                    this,
+                    desc.describedClass(),
+                    false,
+                    desc.typeId(),
+                    desc.typeName(),
+                    desc.affFieldKeyName(),
+                    desc.mapper(),
+                    desc.initialSerializer(),
+                    false,
+                    true
+                );
 
-            desc = registerUserClassDescriptor(desc);
+                if (descByCls.replace(cls, desc, desc0)) {
+                    Collection<BinarySchema> schemas =
+                        desc0.schema() != null ? Collections.singleton(desc.schema()) : null;
+
+                    BinaryMetadata meta = new BinaryMetadata(desc0.typeId(),
+                        desc0.typeName(),
+                        desc0.fieldsMeta(),
+                        desc0.affFieldKeyName(),
+                        schemas, desc0.isEnum());
+
+                    metaHnd.addMeta(desc0.typeId(), meta.wrap(this));
+
+                    return desc0;
+                }
+            }
+            else
+                desc = registerUserClassDescriptor(desc);
         }
 
         return desc;
@@ -959,7 +987,7 @@ public class BinaryContext {
      * @return GridBinaryClassDescriptor.
      */
     public BinaryClassDescriptor registerPredefinedType(Class<?> cls, int id) {
-        return registerPredefinedType(cls, id, null);
+        return registerPredefinedType(cls, id, null, true);
     }
 
     /**
@@ -968,7 +996,7 @@ public class BinaryContext {
      * @param affFieldName Affinity field name.
      * @return GridBinaryClassDescriptor.
      */
-    public BinaryClassDescriptor registerPredefinedType(Class<?> cls, int id, String affFieldName) {
+    public BinaryClassDescriptor registerPredefinedType(Class<?> cls, int id, String affFieldName, boolean registered) {
         String simpleClsName = SIMPLE_NAME_LOWER_CASE_MAPPER.typeName(cls.getName());
 
         if (id == 0)
@@ -984,7 +1012,7 @@ public class BinaryContext {
             SIMPLE_NAME_LOWER_CASE_MAPPER,
             new BinaryReflectiveSerializer(),
             false,
-            true /* registered */
+            registered /* registered */
         );
 
         predefinedTypeNames.put(simpleClsName, id);
@@ -994,15 +1022,6 @@ public class BinaryContext {
 
         if (affFieldName != null)
             affKeyFieldNames.putIfAbsent(id, affFieldName);
-
-        if (affFieldName != null) {
-            metaHnd.addMeta(id, new BinaryMetadata(id,
-                simpleClsName,
-                desc.fieldsMeta(),
-                affFieldName,
-                desc.schema() != null ? Collections.singleton(desc.schema()) : null,
-                false).wrap(this));
-        }
 
         return desc;
     }
