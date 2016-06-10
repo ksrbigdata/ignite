@@ -3080,21 +3080,44 @@ public class IgfsMetaManager extends IgfsManager {
         List<IgfsPath> createdPaths = new ArrayList<>(pathIds.count() - curIdx);
 
         // Second step: create middle directories.
-        long createTime = System.currentTimeMillis();
+        long curTime = System.currentTimeMillis();
 
         while (curIdx < pathIds.count() - 1) {
+            lastCreatedPath = new IgfsPath(lastCreatedPath, curPart);
+
             int nextIdx = curIdx + 1;
 
             String nextPart = pathIds.part(nextIdx);
             IgniteUuid nextId = pathIds.surrogateId(nextIdx);
 
-            // TODO: Use secondary FS
-            id2InfoPrj.invoke(curId, new IgfsMetaDirectoryCreateProcessor(createTime, createTime, dirProps,
+            long accessTime;
+            long modificationTime;
+            Map<String, String> props;
+
+            if (secondaryCtx != null) {
+                IgfsFile secondaryInfo = secondaryCtx.fileSystem().info(lastCreatedPath);
+
+                if (secondaryInfo == null)
+                    throw new IgfsException("Failed to perform operation because secondary file system path was " +
+                        "modified concurrnetly: " + lastCreatedPath);
+                else if (secondaryInfo.isFile())
+                    throw new IgfsException("Failed to perform operation because secondary file system entity is " +
+                        "not directory: " + lastCreatedPath);
+
+                accessTime = secondaryInfo.accessTime();
+                modificationTime = secondaryInfo.modificationTime();
+                props = secondaryInfo.properties();
+            }
+            else {
+                accessTime = curTime;
+                modificationTime = curTime;
+                props = dirProps;
+            }
+
+            id2InfoPrj.invoke(curId, new IgfsMetaDirectoryCreateProcessor(accessTime, modificationTime, props,
                 nextPart, new IgfsListingEntry(nextId, dir || !pathIds.isLastIndex(nextIdx))));
 
             // Save event.
-            lastCreatedPath = new IgfsPath(lastCreatedPath, curPart);
-
             createdPaths.add(lastCreatedPath);
 
             // Advance things further.
@@ -3107,13 +3130,67 @@ public class IgfsMetaManager extends IgfsManager {
         // Third step: create leaf.
         IgfsEntryInfo info;
 
-        if (dir)
-            // TODO: Use secondary FS
-            info = invokeAndGet(curId, new IgfsMetaDirectoryCreateProcessor(createTime, createTime, dirProps));
-        else
-            // TODO: Use secondary FS
-            info = invokeAndGet(curId, new IgfsMetaFileCreateProcessor(createTime, createTime, fileProps,
-                blockSize, affKey, createFileLockId(false), evictExclude, 0L));
+        if (dir) {
+            long accessTime;
+            long modificationTime;
+            Map<String, String> props;
+
+            if (secondaryCtx != null) {
+                IgfsFile secondaryInfo = secondaryCtx.fileSystem().info(pathIds.path());
+
+                if (secondaryInfo == null)
+                    throw new IgfsException("Failed to perform operation because secondary file system path was " +
+                        "modified concurrnetly: " + pathIds.path());
+                else if (secondaryInfo.isFile())
+                    throw new IgfsException("Failed to perform operation because secondary file system entity is " +
+                        "not directory: " + lastCreatedPath);
+
+                accessTime = secondaryInfo.accessTime();
+                modificationTime = secondaryInfo.modificationTime();
+                props = secondaryInfo.properties();
+            }
+            else {
+                accessTime = curTime;
+                modificationTime = curTime;
+                props = dirProps;
+            }
+
+            info = invokeAndGet(curId, new IgfsMetaDirectoryCreateProcessor(accessTime, modificationTime, props));
+        }
+        else {
+            long newAccessTime;
+            long newModificationTime;
+            Map<String, String> newProps;
+            long newLen;
+            int newBlockSize;
+
+            if (secondaryCtx != null) {
+                IgfsFile secondaryFile = secondaryCtx.info();
+
+                if (secondaryFile == null)
+                    throw fsException("Failed to open output stream to the file created in " +
+                        "the secondary file system because it no longer exists: " + pathIds.path());
+                else if (secondaryFile.isDirectory())
+                    throw fsException("Failed to open output stream to the file created in " +
+                        "the secondary file system because the path points to a directory: " + pathIds.path());
+
+                newAccessTime = secondaryFile.accessTime();
+                newModificationTime = secondaryFile.modificationTime();
+                newProps = secondaryFile.properties();
+                newLen = secondaryFile.length();
+                newBlockSize = secondaryFile.blockSize();
+            }
+            else {
+                newAccessTime = curTime;
+                newModificationTime = curTime;
+                newProps = fileProps;
+                newLen = 0L;
+                newBlockSize = blockSize;
+            }
+
+            info = invokeAndGet(curId, new IgfsMetaFileCreateProcessor(newAccessTime, newModificationTime, newProps,
+                newBlockSize, affKey, createFileLockId(false), evictExclude, newLen));
+        }
 
         createdPaths.add(pathIds.path());
 
