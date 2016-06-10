@@ -49,7 +49,7 @@ public class IgfsMetaFileCreateProcessor implements EntryProcessor<IgniteUuid, I
     private static final long serialVersionUID = 0L;
 
     /** Create time. */
-    private long createTime;
+    private long accessTime;
 
     /** Modification time. */
     private long modificationTime;
@@ -82,7 +82,7 @@ public class IgfsMetaFileCreateProcessor implements EntryProcessor<IgniteUuid, I
     /**
      * Constructor.
      *
-     * @param createTime Create time.
+     * @param accessTime Access time.
      * @param modificationTime Modification time.
      * @param props Properties.
      * @param blockSize Block size.
@@ -91,9 +91,9 @@ public class IgfsMetaFileCreateProcessor implements EntryProcessor<IgniteUuid, I
      * @param evictExclude Evict exclude flag.
      * @param len File length.
      */
-    public IgfsMetaFileCreateProcessor(long createTime, long modificationTime, Map<String, String> props,
+    public IgfsMetaFileCreateProcessor(long accessTime, long modificationTime, Map<String, String> props,
         int blockSize, @Nullable IgniteUuid affKey, IgniteUuid lockId, boolean evictExclude, long len) {
-        this.createTime = createTime;
+        this.accessTime = accessTime;
         this.modificationTime = modificationTime;
         this.props = props;
         this.blockSize = blockSize;
@@ -114,7 +114,7 @@ public class IgfsMetaFileCreateProcessor implements EntryProcessor<IgniteUuid, I
             lockId,
             evictExclude,
             props,
-            createTime,
+            accessTime,
             modificationTime
         );
 
@@ -125,7 +125,7 @@ public class IgfsMetaFileCreateProcessor implements EntryProcessor<IgniteUuid, I
 
     /** {@inheritDoc} */
     @Override public void writeExternal(ObjectOutput out) throws IOException {
-        out.writeLong(createTime);
+        out.writeLong(accessTime);
         out.writeLong(modificationTime);
 
         IgfsUtils.writeProperties(out, props);
@@ -140,7 +140,7 @@ public class IgfsMetaFileCreateProcessor implements EntryProcessor<IgniteUuid, I
 
     /** {@inheritDoc} */
     @Override public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-        createTime = in.readLong();
+        accessTime = in.readLong();
         modificationTime = in.readLong();
 
         props = IgfsUtils.readProperties(in);
@@ -157,7 +157,7 @@ public class IgfsMetaFileCreateProcessor implements EntryProcessor<IgniteUuid, I
     @Override public void writeBinary(BinaryWriter writer) throws BinaryObjectException {
         BinaryRawWriter out = writer.rawWriter();
 
-        out.writeLong(createTime);
+        out.writeLong(accessTime);
         out.writeLong(modificationTime);
 
         IgfsUtils.writeProperties(out, props);
@@ -174,7 +174,7 @@ public class IgfsMetaFileCreateProcessor implements EntryProcessor<IgniteUuid, I
     @Override public void readBinary(BinaryReader reader) throws BinaryObjectException {
         BinaryRawReader in = reader.rawReader();
 
-        createTime = in.readLong();
+        accessTime = in.readLong();
         modificationTime = in.readLong();
 
         props = IgfsUtils.readProperties(in);

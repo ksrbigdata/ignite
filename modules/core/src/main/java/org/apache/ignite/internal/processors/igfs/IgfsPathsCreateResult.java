@@ -19,7 +19,9 @@ package org.apache.ignite.internal.processors.igfs;
 
 import org.apache.ignite.igfs.IgfsPath;
 import org.apache.ignite.internal.util.typedef.internal.S;
+import org.jetbrains.annotations.Nullable;
 
+import java.io.OutputStream;
 import java.util.List;
 
 /**
@@ -32,15 +34,20 @@ public class IgfsPathsCreateResult {
     /** Info of the last created file. */
     private final IgfsEntryInfo info;
 
+    /** Secondary output stream. */
+    private final OutputStream secondaryOut;
+
     /**
      * Constructor.
      *
      * @param paths Created paths.
      * @param info Info of the last created file.
+     * @param secondaryOut Secondary output stream.
      */
-    public IgfsPathsCreateResult(List<IgfsPath> paths, IgfsEntryInfo info) {
+    public IgfsPathsCreateResult(List<IgfsPath> paths, IgfsEntryInfo info, @Nullable OutputStream secondaryOut) {
         this.paths = paths;
         this.info = info;
+        this.secondaryOut = secondaryOut;
     }
 
     /**
@@ -55,6 +62,13 @@ public class IgfsPathsCreateResult {
      */
     public IgfsEntryInfo info() {
         return info;
+    }
+
+    /**
+     * @return Secondary output stream.
+     */
+    public OutputStream secondaryOutputStream() {
+        return secondaryOut;
     }
 
     /** {@inheritDoc} */

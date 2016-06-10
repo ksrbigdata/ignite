@@ -2789,8 +2789,8 @@ public class IgfsMetaManager extends IgfsManager {
                         }
                         else {
                             // Create file and parent folders.
-                            IgfsPathsCreateResult res =
-                                createFile(pathIds, lockInfos, dirProps, fileProps, blockSize, affKey, evictExclude);
+                            IgfsPathsCreateResult res = createFile(pathIds, lockInfos, dirProps, fileProps, blockSize,
+                                affKey, evictExclude, null);
 
                             if (res == null)
                                 continue;
@@ -2868,8 +2868,6 @@ public class IgfsMetaManager extends IgfsManager {
                     }
 
                     // Start TX.
-                    OutputStream secondaryOut = null;
-
                     try (IgniteInternalTx tx = startTx()) {
                         Map<IgniteUuid, IgfsEntryInfo> lockInfos = lockIds(lockIds);
 
@@ -2919,10 +2917,12 @@ public class IgfsMetaManager extends IgfsManager {
                             long newLen;
                             int newBlockSize;
 
-                            if (secondaryCtx != null) {
-                                secondaryOut = secondaryCtx.create(path, overwrite, fileProps);
+                            OutputStream secondaryOut = null;
 
-                                IgfsFile secondaryFile = secondaryCtx.info(path);
+                            if (secondaryCtx != null) {
+                                secondaryOut = secondaryCtx.create();
+
+                                IgfsFile secondaryFile = secondaryCtx.info();
 
                                 if (secondaryFile == null)
                                     throw fsException("Failed to open output stream to the file created in " +
@@ -2957,10 +2957,9 @@ public class IgfsMetaManager extends IgfsManager {
                             return new IgfsCreateResult(newInfo, secondaryOut);
                         }
                         else {
-                            // TODO: Handle this part.
                             // Create file and parent folders.
-                            IgfsPathsCreateResult res =
-                                createFile(pathIds, lockInfos, dirProps, fileProps, blockSize, affKey, evictExclude);
+                            IgfsPathsCreateResult res = createFile(pathIds, lockInfos, dirProps, fileProps, blockSize,
+                                affKey, evictExclude, secondaryCtx);
 
                             if (res == null)
                                 continue;
@@ -2972,7 +2971,7 @@ public class IgfsMetaManager extends IgfsManager {
                             generateCreateEvents(res.createdPaths(), true);
 
                             // TODO: Set correct output stream.
-                            return new IgfsCreateResult(res.info(), null);
+                            return new IgfsCreateResult(res.info(), res.secondaryOutputStream());
                         }
                     }
                 }
@@ -3001,7 +3000,7 @@ public class IgfsMetaManager extends IgfsManager {
             throw new IgfsParentNotDirectoryException("Failed to create directory (parent " +
                 "element is not a directory)");
 
-        return createFileOrDirectory(true, pathIds, lockInfos, dirProps, null, 0, null, false);
+        return createFileOrDirectory(true, pathIds, lockInfos, dirProps, null, 0, null, false, null);
     }
 
     /**
@@ -3014,22 +3013,25 @@ public class IgfsMetaManager extends IgfsManager {
      * @param blockSize Block size.
      * @param affKey Affinity key (optional)
      * @param evictExclude Evict exclude flag.
+     * @param secondaryCtx Secondary file system create context.
      * @return Result or {@code} if the first parent already contained child with the same name.
      * @throws IgniteCheckedException If failed.
      */
     @Nullable private IgfsPathsCreateResult createFile(IgfsPathIds pathIds, Map<IgniteUuid, IgfsEntryInfo> lockInfos,
         Map<String, String> dirProps, Map<String, String> fileProps, int blockSize, @Nullable IgniteUuid affKey,
-        boolean evictExclude) throws IgniteCheckedException{
+        boolean evictExclude, @Nullable IgfsSecondaryFileSystemCreateContext secondaryCtx)
+        throws IgniteCheckedException{
         // Check if entry we are going to write to is directory.
         if (lockInfos.get(pathIds.lastExistingId()).isFile())
             throw new IgfsParentNotDirectoryException("Failed to open file for write " +
                 "(parent element is not a directory): " + pathIds.path());
 
-        return createFileOrDirectory(false, pathIds, lockInfos, dirProps, fileProps, blockSize, affKey, evictExclude);
+        return createFileOrDirectory(false, pathIds, lockInfos, dirProps, fileProps, blockSize, affKey, evictExclude,
+            secondaryCtx);
     }
 
     /**
-     * Ceate file or directory.
+     * Create file or directory.
      *
      * @param dir Directory flag.
      * @param pathIds Path IDs.
@@ -3039,12 +3041,14 @@ public class IgfsMetaManager extends IgfsManager {
      * @param blockSize Block size.
      * @param affKey Affinity key.
      * @param evictExclude Evict exclude flag.
+     * @param secondaryCtx Secondary file system create context.
      * @return Result.
      * @throws IgniteCheckedException If failed.
      */
     private IgfsPathsCreateResult createFileOrDirectory(boolean dir, IgfsPathIds pathIds,
         Map<IgniteUuid, IgfsEntryInfo> lockInfos, Map<String, String> dirProps, Map<String, String> fileProps,
-        int blockSize, @Nullable IgniteUuid affKey, boolean evictExclude) throws IgniteCheckedException {
+        int blockSize, @Nullable IgniteUuid affKey, boolean evictExclude,
+        @Nullable IgfsSecondaryFileSystemCreateContext secondaryCtx) throws IgniteCheckedException {
         // This is our starting point.
         int lastExistingIdx = pathIds.lastExistingIndex();
         IgfsEntryInfo lastExistingInfo = lockInfos.get(pathIds.lastExistingId());
@@ -3059,6 +3063,12 @@ public class IgfsMetaManager extends IgfsManager {
 
         if (lastExistingInfo.hasChild(curPart))
             return null;
+
+        // Invoke secondary file system if needed.
+        OutputStream secondaryOut = null;
+
+        if (secondaryCtx != null)
+            secondaryOut = secondaryCtx.create();
 
         // First step: add new entry to the last existing element.
         id2InfoPrj.invoke(lastExistingInfo.id(), new IgfsMetaDirectoryListingAddProcessor(curPart,
@@ -3078,7 +3088,8 @@ public class IgfsMetaManager extends IgfsManager {
             String nextPart = pathIds.part(nextIdx);
             IgniteUuid nextId = pathIds.surrogateId(nextIdx);
 
-            id2InfoPrj.invoke(curId, new IgfsMetaDirectoryCreateProcessor(createTime, dirProps,
+            // TODO: Use secondary FS
+            id2InfoPrj.invoke(curId, new IgfsMetaDirectoryCreateProcessor(createTime, createTime, dirProps,
                 nextPart, new IgfsListingEntry(nextId, dir || !pathIds.isLastIndex(nextIdx))));
 
             // Save event.
@@ -3097,14 +3108,16 @@ public class IgfsMetaManager extends IgfsManager {
         IgfsEntryInfo info;
 
         if (dir)
-            info = invokeAndGet(curId, new IgfsMetaDirectoryCreateProcessor(createTime, dirProps));
+            // TODO: Use secondary FS
+            info = invokeAndGet(curId, new IgfsMetaDirectoryCreateProcessor(createTime, createTime, dirProps));
         else
+            // TODO: Use secondary FS
             info = invokeAndGet(curId, new IgfsMetaFileCreateProcessor(createTime, createTime, fileProps,
                 blockSize, affKey, createFileLockId(false), evictExclude, 0L));
 
         createdPaths.add(pathIds.path());
 
-        return new IgfsPathsCreateResult(createdPaths, info);
+        return new IgfsPathsCreateResult(createdPaths, info, secondaryOut);
     }
 
     /**

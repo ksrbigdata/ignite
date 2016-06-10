@@ -20,6 +20,7 @@ package org.apache.ignite.internal.processors.igfs;
 import org.apache.ignite.igfs.IgfsFile;
 import org.apache.ignite.igfs.IgfsPath;
 import org.apache.ignite.igfs.secondary.IgfsSecondaryFileSystem;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.OutputStream;
 import java.util.Map;
@@ -31,8 +32,17 @@ public class IgfsSecondaryFileSystemCreateContext {
     /** File system. */
     private final IgfsSecondaryFileSystem fs;
 
+    /** Path. */
+    private final IgfsPath path;
+
+    /** Overwrite flag. */
+    private final boolean overwrite;
+
     /** Simple create flag. */
     private final boolean simpleCreate;
+
+    /** Properties. */
+    private final Map<String, String> props;
 
     /** Replication. */
     private final short replication;
@@ -47,14 +57,21 @@ public class IgfsSecondaryFileSystemCreateContext {
      * Constructor.
      *
      * @param fs File system.
+     * @param path Path.
+     * @param overwrite Overwrite flag.
      * @param simpleCreate Simple create flag.
-     * @param blockSize Block size.
+     * @param props Properties.
      * @param replication Replication.
+     * @param blockSize Block size.
+     * @param bufSize Buffer size.
      */
-    public IgfsSecondaryFileSystemCreateContext(IgfsSecondaryFileSystem fs, boolean simpleCreate, short replication,
-        long blockSize, int bufSize) {
+    public IgfsSecondaryFileSystemCreateContext(IgfsSecondaryFileSystem fs, IgfsPath path, boolean overwrite,
+        boolean simpleCreate, @Nullable Map<String, String> props, short replication, long blockSize, int bufSize) {
         this.fs = fs;
+        this.path = path;
+        this.overwrite = overwrite;
         this.simpleCreate = simpleCreate;
+        this.props = props;
         this.replication = replication;
         this.blockSize = blockSize;
         this.bufSize = bufSize;
@@ -63,12 +80,9 @@ public class IgfsSecondaryFileSystemCreateContext {
     /**
      * Create file in the secondary file system.
      *
-     * @param path Path.
-     * @param overwrite Overwrite flag.
-     * @param props Properties.
      * @return Output stream.
      */
-    public OutputStream create(IgfsPath path, boolean overwrite, Map<String, String> props) {
+    public OutputStream create() {
         return simpleCreate ? fs.create(path, overwrite) :
             fs.create(path, bufSize, overwrite, replication, blockSize, props);
     }
@@ -76,10 +90,9 @@ public class IgfsSecondaryFileSystemCreateContext {
     /**
      * Get file info.
      *
-     * @param path Path.
      * @return File.
      */
-    public IgfsFile info(IgfsPath path) {
+    public IgfsFile info() {
         return fs.info(path);
     }
 

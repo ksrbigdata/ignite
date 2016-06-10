@@ -1036,8 +1036,8 @@ public final class IgfsImpl implements IgfsEx {
                 IgfsSecondaryFileSystemCreateContext secondaryCtx = null;
 
                 if (mode != PRIMARY)
-                    secondaryCtx = new IgfsSecondaryFileSystemCreateContext(secondaryFs, simpleCreate,
-                        (short)replication, groupBlockSize(), bufSize);
+                    secondaryCtx = new IgfsSecondaryFileSystemCreateContext(secondaryFs, path, overwrite, simpleCreate,
+                        fileProps, (short)replication, groupBlockSize(), bufSize);
 
                 // Await for async ops completion if in DUAL mode.
                 if (mode != PRIMARY)
