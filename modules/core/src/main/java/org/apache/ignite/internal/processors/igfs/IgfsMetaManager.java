@@ -1792,7 +1792,7 @@ public class IgfsMetaManager extends IgfsManager {
      * @return Output stream descriptor.
      * @throws IgniteCheckedException If file creation failed.
      */
-    public IgfsSecondaryOutputStreamDescriptor createDual(final IgfsSecondaryFileSystem fs,
+    public IgfsCreateResult createDual(final IgfsSecondaryFileSystem fs,
         final IgfsPath path,
         final boolean simpleCreate,
         @Nullable final Map<String, String> props,
@@ -1839,19 +1839,19 @@ public class IgfsMetaManager extends IgfsManager {
      * @return Output stream descriptor.
      * @throws IgniteCheckedException If output stream open for append has failed.
      */
-    public IgfsSecondaryOutputStreamDescriptor appendDual(final IgfsSecondaryFileSystem fs, final IgfsPath path,
+    public IgfsCreateResult appendDual(final IgfsSecondaryFileSystem fs, final IgfsPath path,
         final int bufSize) throws IgniteCheckedException {
         if (busyLock.enterBusy()) {
             try {
                 assert fs != null;
                 assert path != null;
 
-                SynchronizationTask<IgfsSecondaryOutputStreamDescriptor> task =
-                    new SynchronizationTask<IgfsSecondaryOutputStreamDescriptor>() {
+                SynchronizationTask<IgfsCreateResult> task =
+                    new SynchronizationTask<IgfsCreateResult>() {
                         /** Output stream to the secondary file system. */
                         private OutputStream out;
 
-                        @Override public IgfsSecondaryOutputStreamDescriptor onSuccess(Map<IgfsPath,
+                        @Override public IgfsCreateResult onSuccess(Map<IgfsPath,
                             IgfsEntryInfo> infos) throws Exception {
                             validTxState(true);
 
@@ -1890,10 +1890,10 @@ public class IgfsMetaManager extends IgfsManager {
                             // Set lock and return.
                             IgfsEntryInfo lockedInfo = invokeLock(info.id(), false);
 
-                            return new IgfsSecondaryOutputStreamDescriptor(lockedInfo, out);
+                            return new IgfsCreateResult(lockedInfo, out);
                         }
 
-                        @Override public IgfsSecondaryOutputStreamDescriptor onFailure(@Nullable Exception err)
+                        @Override public IgfsCreateResult onFailure(@Nullable Exception err)
                             throws IgniteCheckedException {
                             U.closeQuiet(out);
 
@@ -2811,18 +2811,24 @@ public class IgfsMetaManager extends IgfsManager {
      * @param affKey Affinity key.
      * @param evictExclude Evict exclude flag.
      * @param fileProps File properties.
-     * @return @return Resulting info.
+     * @param secondaryCtx Secondary file system create context.
+     * @return @return Operation result.
      * @throws IgniteCheckedException If failed.
      */
-    IgfsEntryInfo create(
+    IgfsCreateResult create(
         final IgfsPath path,
         Map<String, String> dirProps,
         final boolean overwrite,
         final int blockSize,
         final @Nullable IgniteUuid affKey,
         final boolean evictExclude,
-        @Nullable Map<String, String> fileProps) throws IgniteCheckedException {
+        @Nullable Map<String, String> fileProps,
+        @Nullable IgfsSecondaryFileSystemCreateContext secondaryCtx) throws IgniteCheckedException {
         validTxState(false);
+
+        if (secondaryCtx != null)
+            return createDual(secondaryCtx.fileSystem(), path, secondaryCtx.simpleCreate(), fileProps, overwrite,
+                secondaryCtx.bufferSize(), secondaryCtx.replication(), secondaryCtx.blockSize(), affKey);
 
         while (true) {
             if (busyLock.enterBusy()) {
@@ -2897,7 +2903,7 @@ public class IgfsMetaManager extends IgfsManager {
 
                             IgfsUtils.sendEvents(igfsCtx.kernalContext(), path, EventType.EVT_IGFS_FILE_OPENED_WRITE);
 
-                            return newInfo;
+                            return new IgfsCreateResult(newInfo, null);
                         }
                         else {
                             // Create file and parent folders.
@@ -2913,7 +2919,7 @@ public class IgfsMetaManager extends IgfsManager {
                             // Generate events.
                             generateCreateEvents(res.createdPaths(), true);
 
-                            return res.info();
+                            return new IgfsCreateResult(res.info(), null);
                         }
                     }
                 }
@@ -3107,7 +3113,7 @@ public class IgfsMetaManager extends IgfsManager {
     /**
      * Synchronization task to create a file.
      */
-    private class CreateFileSynchronizationTask implements SynchronizationTask<IgfsSecondaryOutputStreamDescriptor> {
+    private class CreateFileSynchronizationTask implements SynchronizationTask<IgfsCreateResult> {
         /** Secondary file system. */
         private IgfsSecondaryFileSystem fs;
 
@@ -3171,7 +3177,7 @@ public class IgfsMetaManager extends IgfsManager {
         }
 
         /** {@inheritDoc} */
-        @Override public IgfsSecondaryOutputStreamDescriptor onSuccess(Map<IgfsPath, IgfsEntryInfo> infos)
+        @Override public IgfsCreateResult onSuccess(Map<IgfsPath, IgfsEntryInfo> infos)
             throws Exception {
             validTxState(true);
 
@@ -3266,11 +3272,11 @@ public class IgfsMetaManager extends IgfsManager {
             if (oldId == null && evts.isRecordable(EventType.EVT_IGFS_FILE_CREATED))
                 pendingEvts.add(new IgfsEvent(path, locNode, EventType.EVT_IGFS_FILE_CREATED));
 
-            return new IgfsSecondaryOutputStreamDescriptor(newInfo, out);
+            return new IgfsCreateResult(newInfo, out);
         }
 
         /** {@inheritDoc} */
-        @Override public IgfsSecondaryOutputStreamDescriptor onFailure(Exception err) throws IgniteCheckedException {
+        @Override public IgfsCreateResult onFailure(Exception err) throws IgniteCheckedException {
             U.closeQuiet(out);
 
             U.error(log, "File create in DUAL mode failed [path=" + path + ", simpleCreate=" +
