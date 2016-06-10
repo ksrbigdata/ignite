@@ -393,40 +393,47 @@ public class IgfsMetaManager extends IgfsManager {
      * @throws IgniteCheckedException If failed.
      */
     public IgfsPathIds pathIds(IgfsPath path) throws IgniteCheckedException {
-        if (busyLock.enterBusy()) {
-            try {
-                validTxState(false);
+        // Prepare parts.
+        String[] components = path.componentsArray();
 
-                // Prepare parts.
-                String[] components = path.componentsArray();
+        String[] parts = new String[components.length + 1];
 
-                String[] parts = new String[components.length + 1];
+        System.arraycopy(components, 0, parts, 1, components.length);
 
-                System.arraycopy(components, 0, parts, 1, components.length);
+        // Get IDs.
+        if (client) {
+            List<IgniteUuid> ids = runClientTask(new IgfsClientMetaIdsForPathCallable(cfg.getName(), path));
 
-                // Prepare IDs.
-                IgniteUuid[] ids = new IgniteUuid[parts.length];
-
-                ids[0] = IgfsUtils.ROOT_ID;
-
-                for (int i = 1; i < ids.length; i++) {
-                    IgniteUuid id = fileId(ids[i - 1], parts[i], false);
-
-                    if (id != null)
-                        ids[i] = id;
-                    else
-                        break;
-                }
-
-                // Return.
-                return new IgfsPathIds(path, parts, ids);
-            }
-            finally {
-                busyLock.leaveBusy();
-            }
+            return new IgfsPathIds(path, parts, ids.toArray(new IgniteUuid[ids.size()]));
         }
-        else
-            throw new IllegalStateException("Failed to get file IDS because Grid is stopping: " + path);
+        else {
+            if (busyLock.enterBusy()) {
+                try {
+                    validTxState(false);
+
+                    IgniteUuid[] ids = new IgniteUuid[parts.length];
+
+                    ids[0] = IgfsUtils.ROOT_ID;
+
+                    for (int i = 1; i < ids.length; i++) {
+                        IgniteUuid id = fileId(ids[i - 1], parts[i], false);
+
+                        if (id != null)
+                            ids[i] = id;
+                        else
+                            break;
+                    }
+
+                    // Return.
+                    return new IgfsPathIds(path, parts, ids);
+                }
+                finally {
+                    busyLock.leaveBusy();
+                }
+            }
+            else
+                throw new IllegalStateException("Failed to get file IDS because Grid is stopping: " + path);
+        }
     }
 
     /**
