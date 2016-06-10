@@ -51,6 +51,9 @@ public class IgfsMetaFileCreateProcessor implements EntryProcessor<IgniteUuid, I
     /** Create time. */
     private long createTime;
 
+    /** Modification time. */
+    private long modificationTime;
+
     /** Properties. */
     private Map<String, String> props;
 
@@ -66,6 +69,9 @@ public class IgfsMetaFileCreateProcessor implements EntryProcessor<IgniteUuid, I
     /** Evict exclude flag. */
     private boolean evictExclude;
 
+    /** File length. */
+    private long len;
+
     /**
      * Constructor.
      */
@@ -77,20 +83,24 @@ public class IgfsMetaFileCreateProcessor implements EntryProcessor<IgniteUuid, I
      * Constructor.
      *
      * @param createTime Create time.
+     * @param modificationTime Modification time.
      * @param props Properties.
      * @param blockSize Block size.
      * @param affKey Affinity key.
      * @param lockId Lock ID.
      * @param evictExclude Evict exclude flag.
+     * @param len File length.
      */
-    public IgfsMetaFileCreateProcessor(long createTime, Map<String, String> props, int blockSize,
-        @Nullable IgniteUuid affKey, IgniteUuid lockId, boolean evictExclude) {
+    public IgfsMetaFileCreateProcessor(long createTime, long modificationTime, Map<String, String> props,
+        int blockSize, @Nullable IgniteUuid affKey, IgniteUuid lockId, boolean evictExclude, long len) {
         this.createTime = createTime;
+        this.modificationTime = modificationTime;
         this.props = props;
         this.blockSize = blockSize;
         this.affKey = affKey;
         this.lockId = lockId;
         this.evictExclude = evictExclude;
+        this.len = len;
     }
 
     /** {@inheritDoc} */
@@ -99,13 +109,13 @@ public class IgfsMetaFileCreateProcessor implements EntryProcessor<IgniteUuid, I
         IgfsEntryInfo info = IgfsUtils.createFile(
             entry.getKey(),
             blockSize,
-            0L,
+            len,
             affKey,
             lockId,
             evictExclude,
             props,
             createTime,
-            createTime
+            modificationTime
         );
 
         entry.setValue(info);
@@ -116,6 +126,7 @@ public class IgfsMetaFileCreateProcessor implements EntryProcessor<IgniteUuid, I
     /** {@inheritDoc} */
     @Override public void writeExternal(ObjectOutput out) throws IOException {
         out.writeLong(createTime);
+        out.writeLong(modificationTime);
 
         IgfsUtils.writeProperties(out, props);
 
@@ -123,11 +134,14 @@ public class IgfsMetaFileCreateProcessor implements EntryProcessor<IgniteUuid, I
         U.writeGridUuid(out, affKey);
         U.writeGridUuid(out, lockId);
         out.writeBoolean(evictExclude);
+
+        out.writeLong(len);
     }
 
     /** {@inheritDoc} */
     @Override public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
         createTime = in.readLong();
+        modificationTime = in.readLong();
 
         props = IgfsUtils.readProperties(in);
 
@@ -135,6 +149,8 @@ public class IgfsMetaFileCreateProcessor implements EntryProcessor<IgniteUuid, I
         affKey = U.readGridUuid(in);
         lockId = U.readGridUuid(in);
         evictExclude = in.readBoolean();
+
+        len = in.readLong();
     }
 
     /** {@inheritDoc} */
@@ -142,6 +158,7 @@ public class IgfsMetaFileCreateProcessor implements EntryProcessor<IgniteUuid, I
         BinaryRawWriter out = writer.rawWriter();
 
         out.writeLong(createTime);
+        out.writeLong(modificationTime);
 
         IgfsUtils.writeProperties(out, props);
 
@@ -149,6 +166,8 @@ public class IgfsMetaFileCreateProcessor implements EntryProcessor<IgniteUuid, I
         BinaryUtils.writeIgniteUuid(out, affKey);
         BinaryUtils.writeIgniteUuid(out, lockId);
         out.writeBoolean(evictExclude);
+
+        out.writeLong(len);
     }
 
     /** {@inheritDoc} */
@@ -156,6 +175,7 @@ public class IgfsMetaFileCreateProcessor implements EntryProcessor<IgniteUuid, I
         BinaryRawReader in = reader.rawReader();
 
         createTime = in.readLong();
+        modificationTime = in.readLong();
 
         props = IgfsUtils.readProperties(in);
 
@@ -163,6 +183,8 @@ public class IgfsMetaFileCreateProcessor implements EntryProcessor<IgniteUuid, I
         affKey = BinaryUtils.readIgniteUuid(in);
         lockId = BinaryUtils.readIgniteUuid(in);
         evictExclude = in.readBoolean();
+
+        len = in.readLong();
     }
 
     /** {@inheritDoc} */

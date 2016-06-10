@@ -2931,35 +2931,23 @@ public class IgfsMetaManager extends IgfsManager {
                                     throw fsException("Failed to open output stream to the file created in " +
                                         "the secondary file system because the path points to a directory: " + path);
 
-                                IgfsEntryInfo newInfo2 = IgfsUtils.createFile(
-                                    overwriteId,
-                                    secondaryFile.blockSize(),
-                                    secondaryFile.length(),
-                                    affKey,
-                                    newLockId,
-                                    evictExclude,
-                                    secondaryFile.properties(),
-                                    secondaryFile.accessTime(),
-                                    secondaryFile.modificationTime()
-                                );
-
                                 newAccessTime = secondaryFile.accessTime();
                                 newModificationTime = secondaryFile.modificationTime();
                                 newProps = secondaryFile.properties();
                                 newLen = secondaryFile.length();
-                                newBlockSize = (int)secondaryFile.length();
+                                newBlockSize = secondaryFile.blockSize();
                             }
                             else {
                                 newAccessTime = System.currentTimeMillis();
                                 newModificationTime = newAccessTime;
                                 newProps = fileProps;
-                                newLen = 0;
+                                newLen = 0L;
                                 newBlockSize = blockSize;
                             }
 
                             IgfsEntryInfo newInfo = invokeAndGet(overwriteId,
-                                new IgfsMetaFileCreateProcessor(newAccessTime, newProps, newBlockSize, affKey,
-                                    newLockId, evictExclude));
+                                new IgfsMetaFileCreateProcessor(newAccessTime, newModificationTime, newProps,
+                                    newBlockSize, affKey, newLockId, evictExclude, newLen));
 
                             // Prepare result and commit.
                             tx.commit();
@@ -2969,6 +2957,7 @@ public class IgfsMetaManager extends IgfsManager {
                             return new IgfsCreateResult(newInfo, secondaryOut);
                         }
                         else {
+                            // TODO: Handle this part.
                             // Create file and parent folders.
                             IgfsPathsCreateResult res =
                                 createFile(pathIds, lockInfos, dirProps, fileProps, blockSize, affKey, evictExclude);
@@ -3110,8 +3099,8 @@ public class IgfsMetaManager extends IgfsManager {
         if (dir)
             info = invokeAndGet(curId, new IgfsMetaDirectoryCreateProcessor(createTime, dirProps));
         else
-            info = invokeAndGet(curId, new IgfsMetaFileCreateProcessor(createTime, fileProps,
-                blockSize, affKey, createFileLockId(false), evictExclude));
+            info = invokeAndGet(curId, new IgfsMetaFileCreateProcessor(createTime, createTime, fileProps,
+                blockSize, affKey, createFileLockId(false), evictExclude, 0L));
 
         createdPaths.add(pathIds.path());
 
