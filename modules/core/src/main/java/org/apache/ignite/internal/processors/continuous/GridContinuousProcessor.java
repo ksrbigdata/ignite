@@ -257,9 +257,11 @@ public class GridContinuousProcessor extends GridProcessorAdapter {
                 @Override public void onCustomEvent(AffinityTopologyVersion topVer,
                     ClusterNode snd,
                     StopRoutineDiscoveryMessage msg) {
-                    UUID routineId = msg.routineId();
+                    if (!snd.id().equals(ctx.localNodeId())) {
+                        UUID routineId = msg.routineId();
 
-                    unregisterRemote(routineId);
+                        unregisterRemote(routineId);
+                    }
 
                     for (Map<UUID, LocalRoutineInfo> clientInfo : clientInfos.values()) {
                         if (clientInfo.remove(msg.routineId()) != null)
@@ -768,6 +770,21 @@ public class GridContinuousProcessor extends GridProcessorAdapter {
         }
 
         if (doStop) {
+            // Unregister routine locally.
+            LocalRoutineInfo routine = locInfos.remove(routineId);
+
+            // Finish if routine is not found (wrong ID is provided).
+            if (routine == null) {
+                stopFuts.remove(routineId);
+
+                fut.onDone();
+
+                return fut;
+            }
+
+            // Unregister handler locally.
+            unregisterHandler(routineId, routine.hnd, true);
+
             try {
                 ctx.discovery().sendCustomEvent(new StopRoutineDiscoveryMessage(routineId));
             }
