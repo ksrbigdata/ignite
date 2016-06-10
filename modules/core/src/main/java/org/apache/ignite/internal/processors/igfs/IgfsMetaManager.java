@@ -1146,6 +1146,46 @@ public class IgfsMetaManager extends IgfsManager {
     }
 
     /**
+     * Wheter operation must be re-tries because we have suspicious links which may broke secondary file system
+     * consistency.
+     *
+     * @param pathIds Path IDs.
+     * @param lockInfos Lock infos.
+     * @return
+     */
+    private boolean isRetryForSecondary(IgfsPathIds pathIds, Map<IgniteUuid, IgfsEntryInfo> lockInfos) {
+        // We need to ensure that the last locked info is not linked with expected child.
+        // Otherwise there was some concurrent file system update and we have to re-try.
+        if (!pathIds.allExists()) {
+            // Find the last locked index
+            IgfsEntryInfo lastLockedInfo = null;
+            int lastLockedIdx = -1;
+
+            while (lastLockedIdx < pathIds.lastExistingIndex()) {
+                IgfsEntryInfo nextInfo = lockInfos.get(pathIds.id(lastLockedIdx + 1));
+
+                if (nextInfo != null) {
+                    lastLockedInfo = nextInfo;
+                    lastLockedIdx++;
+                }
+                else
+                    break;
+            }
+
+            assert lastLockedIdx < pathIds.count();
+
+            if (lastLockedInfo != null) {
+                String part = pathIds.part(lastLockedIdx + 1);
+
+                if (lastLockedInfo.listing().containsKey(part))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Move path to the trash directory.
      *
      * @param path Path.
@@ -1185,35 +1225,8 @@ public class IgfsMetaManager extends IgfsManager {
                         // Lock participants.
                         Map<IgniteUuid, IgfsEntryInfo> lockInfos = lockIds(allIds);
 
-                        if (!pathIds.allExists()) {
-                            // We need to ensure that the last locked info is not linked with expected child.
-                            // Otherwise there was some ocncurrent file system update and we have to re-try.
-                            assert secondaryFs != null;
-
-                            // Find the last locked index
-                            IgfsEntryInfo lastLockedInfo = null;
-                            int lastLockedIdx = -1;
-
-                            while (lastLockedIdx < pathIds.lastExistingIndex()) {
-                                IgfsEntryInfo nextInfo = lockInfos.get(pathIds.id(lastLockedIdx + 1));
-
-                                if (nextInfo != null) {
-                                    lastLockedInfo = nextInfo;
-                                    lastLockedIdx++;
-                                }
-                                else
-                                    break;
-                            }
-
-                            assert lastLockedIdx < pathIds.count();
-
-                            if (lastLockedInfo != null) {
-                                String part = pathIds.part(lastLockedIdx + 1);
-
-                                if (lastLockedInfo.listing().containsKey(part))
-                                    continue;
-                            }
-                        }
+                        if (secondaryFs != null && isRetryForSecondary(pathIds, lockInfos))
+                            continue;
 
                         // Ensure that all participants are still in place.
                         if (!pathIds.allExists() || !pathIds.verifyIntegrity(lockInfos, relaxed)) {
