@@ -1163,16 +1163,8 @@ public class IgfsMetaManager extends IgfsManager {
 
                     IgfsPathIds pathIds = pathIds(path);
 
-                    boolean relaxed0 = relaxed;
-
-                    if (!pathIds.allExists()) {
-                        if (secondaryFs == null)
-                            // Return early if target path doesn't exist and we do not have secondary file system.
-                            return new IgfsDeleteResult(false, null);
-                        else
-                            // If path is missing partially, we need more serious locking for DUAL mode.
-                            relaxed0 = false;
-                    }
+                    if (!pathIds.allExists() && secondaryFs == null)
+                        return new IgfsDeleteResult(false, null);
 
                     IgniteUuid victimId = pathIds.lastId();
                     String victimName = pathIds.lastPart();
@@ -1183,7 +1175,7 @@ public class IgfsMetaManager extends IgfsManager {
                     // Prepare IDs to lock.
                     SortedSet<IgniteUuid> allIds = new TreeSet<>(PATH_ID_SORTING_COMPARATOR);
 
-                    pathIds.addExistingIds(allIds, relaxed0);
+                    pathIds.addExistingIds(allIds, relaxed);
 
                     IgniteUuid trashId = IgfsUtils.randomTrashId();
 
@@ -1224,7 +1216,7 @@ public class IgfsMetaManager extends IgfsManager {
                         }
 
                         // Ensure that all participants are still in place.
-                        if (!pathIds.allExists() || !pathIds.verifyIntegrity(lockInfos, relaxed0)) {
+                        if (!pathIds.allExists() || !pathIds.verifyIntegrity(lockInfos, relaxed)) {
                             // For DUAL mode we will try to update the underlying FS still. Note we do that inside TX.
                             if (secondaryFs != null) {
                                 boolean res = secondaryFs.delete(path, recursive);
