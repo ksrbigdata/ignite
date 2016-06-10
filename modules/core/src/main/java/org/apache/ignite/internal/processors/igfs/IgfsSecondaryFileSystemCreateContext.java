@@ -17,7 +17,12 @@
 
 package org.apache.ignite.internal.processors.igfs;
 
+import org.apache.ignite.igfs.IgfsFile;
+import org.apache.ignite.igfs.IgfsPath;
 import org.apache.ignite.igfs.secondary.IgfsSecondaryFileSystem;
+
+import java.io.OutputStream;
+import java.util.Map;
 
 /**
  * Context for secondary file system create request.
@@ -53,6 +58,29 @@ public class IgfsSecondaryFileSystemCreateContext {
         this.replication = replication;
         this.blockSize = blockSize;
         this.bufSize = bufSize;
+    }
+
+    /**
+     * Create file in the secondary file system.
+     *
+     * @param path Path.
+     * @param overwrite Overwrite flag.
+     * @param props Properties.
+     * @return Output stream.
+     */
+    public OutputStream create(IgfsPath path, boolean overwrite, Map<String, String> props) {
+        return simpleCreate ? fs.create(path, overwrite) :
+            fs.create(path, bufSize, overwrite, replication, blockSize, props);
+    }
+
+    /**
+     * Get file info.
+     *
+     * @param path Path.
+     * @return File.
+     */
+    public IgfsFile info(IgfsPath path) {
+        return fs.info(path);
     }
 
     /**

@@ -1151,7 +1151,7 @@ public class IgfsMetaManager extends IgfsManager {
      *
      * @param pathIds Path IDs.
      * @param lockInfos Lock infos.
-     * @return
+     * @return Whether to re-try.
      */
     private boolean isRetryForSecondary(IgfsPathIds pathIds, Map<IgniteUuid, IgfsEntryInfo> lockInfos) {
         // We need to ensure that the last locked info is not linked with expected child.
@@ -2868,8 +2868,13 @@ public class IgfsMetaManager extends IgfsManager {
                     }
 
                     // Start TX.
+                    OutputStream secondaryOut = null;
+
                     try (IgniteInternalTx tx = startTx()) {
                         Map<IgniteUuid, IgfsEntryInfo> lockInfos = lockIds(lockIds);
+
+                        if (secondaryCtx != null && isRetryForSecondary(pathIds, lockInfos))
+                            continue;
 
                         if (!pathIds.verifyIntegrity(lockInfos, relaxed))
                             // Directory structure changed concurrently. So we simply re-try.
@@ -2893,30 +2898,75 @@ public class IgfsMetaManager extends IgfsManager {
 
                             // At this point file can be re-created safely.
 
-                            // First step: add existing to trash listing.
+                            // Add existing to trash listing.
                             IgniteUuid oldId = pathIds.lastId();
 
                             id2InfoPrj.invoke(trashId, new IgfsMetaDirectoryListingAddProcessor(oldId.toString(),
                                 new IgfsListingEntry(oldInfo)));
 
-                            // Second step: replace ID in parent directory.
+                            // Replace ID in parent directory.
                             String name = pathIds.lastPart();
                             IgniteUuid parentId = pathIds.lastParentId();
 
                             id2InfoPrj.invoke(parentId, new IgfsMetaDirectoryListingReplaceProcessor(name, overwriteId));
 
-                            // Third step: create the file.
-                            long createTime = System.currentTimeMillis();
+                            // Create the file.
+                            IgniteUuid newLockId = createFileLockId(false);
 
-                            IgfsEntryInfo newInfo = invokeAndGet(overwriteId, new IgfsMetaFileCreateProcessor(createTime,
-                                fileProps, blockSize, affKey, createFileLockId(false), evictExclude));
+                            long newAccessTime;
+                            long newModificationTime;
+                            Map<String, String> newProps;
+                            long newLen;
+                            int newBlockSize;
+
+                            if (secondaryCtx != null) {
+                                secondaryOut = secondaryCtx.create(path, overwrite, fileProps);
+
+                                IgfsFile secondaryFile = secondaryCtx.info(path);
+
+                                if (secondaryFile == null)
+                                    throw fsException("Failed to open output stream to the file created in " +
+                                        "the secondary file system because it no longer exists: " + path);
+                                else if (secondaryFile.isDirectory())
+                                    throw fsException("Failed to open output stream to the file created in " +
+                                        "the secondary file system because the path points to a directory: " + path);
+
+                                IgfsEntryInfo newInfo2 = IgfsUtils.createFile(
+                                    overwriteId,
+                                    secondaryFile.blockSize(),
+                                    secondaryFile.length(),
+                                    affKey,
+                                    newLockId,
+                                    evictExclude,
+                                    secondaryFile.properties(),
+                                    secondaryFile.accessTime(),
+                                    secondaryFile.modificationTime()
+                                );
+
+                                newAccessTime = secondaryFile.accessTime();
+                                newModificationTime = secondaryFile.modificationTime();
+                                newProps = secondaryFile.properties();
+                                newLen = secondaryFile.length();
+                                newBlockSize = (int)secondaryFile.length();
+                            }
+                            else {
+                                newAccessTime = System.currentTimeMillis();
+                                newModificationTime = newAccessTime;
+                                newProps = fileProps;
+                                newLen = 0;
+                                newBlockSize = blockSize;
+                            }
+
+                            IgfsEntryInfo newInfo = invokeAndGet(overwriteId,
+                                new IgfsMetaFileCreateProcessor(newAccessTime, newProps, newBlockSize, affKey,
+                                    newLockId, evictExclude));
 
                             // Prepare result and commit.
                             tx.commit();
 
                             IgfsUtils.sendEvents(igfsCtx.kernalContext(), path, EventType.EVT_IGFS_FILE_OPENED_WRITE);
 
-                            return new IgfsCreateResult(newInfo, null);
+                            return new IgfsCreateResult(newInfo, secondaryOut);
                         }
                         else {
                             // Create file and parent folders.
@@ -2932,6 +2982,7 @@ public class IgfsMetaManager extends IgfsManager {
                             // Generate events.
                             generateCreateEvents(res.createdPaths(), true);
 
+                            // TODO: Set correct output stream.
                             return new IgfsCreateResult(res.info(), null);
                         }
                     }
